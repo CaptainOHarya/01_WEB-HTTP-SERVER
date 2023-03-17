@@ -1,14 +1,12 @@
 package ru.netology.server;
 
+import ru.netology.server.handler.Handler;
+import ru.netology.server.request.Request;
+
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.Socket;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Map;
 
 /**
  * @author Leonid Zulin
@@ -17,12 +15,29 @@ import java.util.List;
 
 // Let's create our own MyRunnable class - the successor of the Runnable interface, where we implement our own run method
 public class MyRunnable implements Runnable{
-    private static final List<String> VALID_PATHS = List.of("/index.html", "/spring.svg", "/spring.png", "/resources.html", "/styles.css", "/app.js", "/links.html", "/forms.html", "/classic.html", "/events.html", "/events.js");
+    // private static final List<String> VALID_PATHS = List.of("/index.html", "/spring.svg", "/spring.png", "/resources.html", "/styles.css", "/app.js", "/links.html", "/forms.html", "/classic.html", "/events.html", "/events.js");
     private final Socket socket;
+    private final Map<String, Map<String, Handler>> handlers;
+    private final Handler handlerNotFound = new Handler() {
+        @Override
+        public void handle(Request request, BufferedOutputStream out) throws IOException {
+            // handling error 404
+            out.write((
+                    "HTTP/1.1 404 Not Found\r\n" +
+                            "Content-Length: 0\r\n" +
+                            "Connection: close\r\n" +
+                            "\r\n"
+            ).getBytes());
+            out.flush();
+        }
+    };
 
-    public MyRunnable(Socket socket) {
+        public MyRunnable(Socket socket, Map<String, Map<String, Handler>> handlers) {
         this.socket = socket;
+        this.handlers = handlers;
+
     }
+
 
     // redefine the run method to work with the client by simply calling the handler method
     @Override
@@ -35,70 +50,29 @@ public class MyRunnable implements Runnable{
                 //
                 socket;
                 // close resources
-                final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                final var in = socket.getInputStream();
                 final var out = new BufferedOutputStream(socket.getOutputStream());
         ) {
-            // read only request line for simplicity
-            // must be in form GET /path HTTP/1.1
-            final var requestLine = in.readLine();
-            final var parts = requestLine.split(" ");
+            Request request = Request.fromInputStream(in);
 
-            if (parts.length != 3) {
-                // just close socket
+            // work with handlers
+            Map<String, Handler> handlerMap = handlers.get(request.getMethod());
+            // if this method does not have a handler
+            if (handlerMap == null) {
+                handlerNotFound.handle(request, out);
+                return;
+            }
+            // On the way
+            Handler handler = handlerMap.get(request.getPath());
+            if (handler == null) {
+                handlerNotFound.handle(request, out);
                 return;
             }
 
-            final var path = parts[1];
-            if (!VALID_PATHS.contains(path)) {
-                out.write((
-                        "HTTP/1.1 404 Not Found\r\n" +
-                                "Content-Length: 0\r\n" +
-                                "Connection: close\r\n" +
-                                "\r\n"
-                ).getBytes());
-                out.flush();
-                return;
-            }
+            // OK
+            handler.handle(request, out);
 
-            final var filePath = Path.of(".", "public", path);
-            final var mimeType = Files.probeContentType(filePath);
 
-            // special case for classic
-            if (path.equals("/classic.html")) {
-                try {
-                    // use the sleep method to check the multithreading of the server
-                    Thread.sleep(7000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-
-                final var template = Files.readString(filePath);
-                final var content = template.replace(
-                        "{time}",
-                        LocalDateTime.now().toString()
-                ).getBytes();
-                out.write((
-                        "HTTP/1.1 200 OK\r\n" +
-                                "Content-Type: " + mimeType + "\r\n" +
-                                "Content-Length: " + content.length + "\r\n" +
-                                "Connection: close\r\n" +
-                                "\r\n"
-                ).getBytes());
-                out.write(content);
-                out.flush();
-                return;
-            }
-
-            final var length = Files.size(filePath);
-            out.write((
-                    "HTTP/1.1 200 OK\r\n" +
-                            "Content-Type: " + mimeType + "\r\n" +
-                            "Content-Length: " + length + "\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n"
-            ).getBytes());
-            Files.copy(filePath, out);
-            out.flush();
         } catch (IOException e) {
             e.printStackTrace(System.out);
         }
