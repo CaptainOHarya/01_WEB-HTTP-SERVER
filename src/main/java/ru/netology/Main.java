@@ -38,7 +38,7 @@ public class Main {
             out.flush();
         });
 
-        server.addHandler("GET", "/index.html", (request, out) -> {
+        server.addHandler("GET", "/default-get.html", (request, out) -> {
             final var filePath = Path.of(".", "public", request.getPath());
             final var mimeType = Files.probeContentType(filePath);
             final var template = Files.readString(filePath);

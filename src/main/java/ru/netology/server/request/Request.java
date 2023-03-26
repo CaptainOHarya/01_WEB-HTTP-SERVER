@@ -1,10 +1,16 @@
 package ru.netology.server.request;
 
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,10 +22,14 @@ public class Request {
     private final String method;
     // request path
     private final String path;
+    private static List<NameValuePair> pathQuery = new ArrayList<>();
+    private static Map<String, String> resultQuery = new HashMap<>();
     // storing headers in the map
     private final Map<String, String> headers;
     // request body
     private final InputStream body;
+    // header delimiter
+    private final static String HEADER_DELIMITER = ":";
 
     // constructor with our parameters, it's private, so that no one can call it
     private Request(String method, String path, Map<String, String> headers, InputStream body) {
@@ -70,7 +80,17 @@ public class Request {
 
         // if the request is valid
         String method = parts[0];
-        String path = parts[1];
+        String path;
+
+        if (parts[1].contains("?")) {
+            path = parts[1].substring(0, parts[1].indexOf("?"));
+            pathQuery = getQueryParam(parts[1].substring(parts[1].indexOf("?") + 1));
+            resultQuery = getQueryParams();
+            System.out.println("Полученные Query параметры: ");
+            for (Map.Entry<String, String> entry : resultQuery.entrySet()) {
+                System.out.println(entry.getKey() + "=" + entry.getValue());
+            }
+        } else path = parts[1];
 
         // Map for headers
         Map<String, String> headers = new HashMap<>();
@@ -81,7 +101,7 @@ public class Request {
         // because the separator between header and body is an empty string before
         while (!(intermediateLine = in.readLine()).isEmpty()) {
             // parse the value of each header by removing the colon
-            int index = intermediateLine.indexOf(":");
+            int index = intermediateLine.indexOf(HEADER_DELIMITER);
             String nameHeader = intermediateLine.substring(0, index); // name before colon
             String valueHeader = intermediateLine.substring(index + 2); // value after two symbol includes colon and space
 
@@ -95,5 +115,29 @@ public class Request {
         return request;
     }
 
+    public static List<NameValuePair> getQueryParam(String pathQuery) {
+        List<NameValuePair> extraList = URLEncodedUtils.parse(pathQuery, Charset.forName("UTF-8"));
+        return extraList;
+    }
+
+    public static Map<String, String> getQueryParams() {
+        for (NameValuePair item : pathQuery) {
+            String name = item.getName();
+            String value;
+            int i = 0;
+            while (resultQuery.containsKey(name)) {
+                name = item.getName() + ++i;
+            }
+            value = item.getValue();
+            resultQuery.put(name, value);
+
+        }
+        return resultQuery;
+
+    }
+
 
 }
+
+
+
